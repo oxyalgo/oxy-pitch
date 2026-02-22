@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OXY ALGO — Machine Stack</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  --gold: #FFD700;
+  --cyan: #00E5FF;
+  --green: #00FF88;
+  --red: #FF4455;
+  --purple: #9945FF;
+  --orange: #FF8C00;
+  --bg: #04040a;
+  --surface: rgba(255,255,255,0.04);
+  --border: rgba(255,215,0,0.12);
+  --text: #e8e8f4;
+  --muted: #555570;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  width:100%; min-height:100%;
+  background:var(--bg); color:var(--text);
+  font-family:'Inter',sans-serif;
+  overflow-x:hidden;
+}
+
+canvas#bg { position:fixed; inset:0; z-index:0; opacity:0.3; pointer-events:none; }
+
+.page { position:relative; z-index:1; max-width:1200px; margin:0 auto; padding:60px 40px 100px; }
+
+/* ── HEADER ── */
+header { text-align:center; margin-bottom:64px; }
+header .eyebrow {
+  font-family:var(--mono); font-size:11px; letter-spacing:3px;
+  color:var(--gold); text-transform:uppercase; margin-bottom:16px;
+}
+header h1 {
+  font-size:clamp(36px,5vw,64px); font-weight:900;
+  letter-spacing:-2px; color:#fff; line-height:1;
+}
+header h1 span { color:var(--gold); }
+header p {
+  font-size:16px; color:var(--muted); margin-top:12px;
+  font-weight:300; letter-spacing:0.3px;
+}
+
+/* ── DIAGRAM CANVAS AREA ── */
+#diagram-wrap {
+  position:relative; width:100%; height:620px;
+  margin-bottom:80px;
+}
+#diagram { width:100%; height:100%; }
+
+/* ── NODE CARDS (HTML overlaid on SVG) ── */
+.node {
+  position:absolute; transform:translate(-50%,-50%);
+  cursor:pointer; user-select:none;
+  transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  z-index:10;
+}
+.node:hover { transform:translate(-50%,-50%) scale(1.08); z-index:20; }
+.node:hover .node-card { box-shadow:0 0 40px var(--node-glow), 0 0 80px rgba(0,0,0,0.5); }
+
+.node-card {
+  background:rgba(10,10,20,0.92);
+  border:1px solid var(--node-color);
+  border-radius:20px;
+  padding:20px 22px;
+  text-align:center;
+  backdrop-filter:blur(16px);
+  box-shadow:0 0 20px var(--node-glow), 0 8px 32px rgba(0,0,0,0.4);
+  min-width:140px;
+  transition:box-shadow 0.3s;
+  position:relative;
+  overflow:hidden;
+}
+
+.node-card::before {
+  content:'';
+  position:absolute; top:0; left:0; right:0; height:1px;
+  background:linear-gradient(90deg,transparent,var(--node-color),transparent);
+  opacity:0.6;
+}
+
+.node-icon { font-size:36px; margin-bottom:8px; line-height:1; }
+.node-name {
+  font-size:15px; font-weight:800; color:#fff;
+  letter-spacing:-0.3px; margin-bottom:3px;
+}
+.node-role {
+  font-size:10px; font-family:var(--mono);
+  color:var(--node-color); letter-spacing:1px;
+  text-transform:uppercase; margin-bottom:8px;
+}
+.node-ip {
+  font-size:9px; font-family:var(--mono);
+  color:var(--muted); letter-spacing:1px;
+}
+.node-status {
+  display:flex; align-items:center; justify-content:center;
+  gap:5px; margin-top:8px;
+}
+.status-dot {
+  width:6px; height:6px; border-radius:50%;
+  background:var(--node-color);
+  box-shadow:0 0 6px var(--node-color);
+  animation:pulse 2s infinite;
+}
+.status-text { font-size:9px; color:var(--muted); font-family:var(--mono); letter-spacing:1px; }
+
+/* Tailscale badge */
+.ts-badge {
+  position:absolute; top:-8px; right:-8px;
+  background:rgba(153,69,255,0.9); color:#fff;
+  font-size:8px; font-family:var(--mono); font-weight:700;
+  letter-spacing:1px; padding:2px 7px; border-radius:20px;
+  border:1px solid rgba(153,69,255,0.5);
+}
+
+/* ── TOOLTIP ── */
+#tooltip {
+  position:fixed; z-index:100;
+  background:rgba(10,10,20,0.96);
+  border:1px solid rgba(255,215,0,0.25);
+  border-radius:14px; padding:18px 22px;
+  max-width:300px; pointer-events:none;
+  box-shadow:0 8px 40px rgba(0,0,0,0.6);
+  opacity:0; transition:opacity 0.2s;
+}
+#tooltip h3 { font-size:13px; font-weight:700; color:var(--gold); margin-bottom:10px; }
+#tooltip ul { list-style:none; display:flex; flex-direction:column; gap:6px; }
+#tooltip ul li { font-size:11px; color:#aaa; display:flex; gap:8px; line-height:1.5; }
+#tooltip ul li::before { content:'›'; color:var(--gold); flex-shrink:0; }
+
+/* ── CONNECTION LABELS ── */
+.conn-label {
+  position:absolute;
+  font-family:var(--mono); font-size:9px;
+  color:var(--muted); letter-spacing:1px;
+  background:rgba(4,4,10,0.8); padding:3px 8px;
+  border-radius:20px; border:1px solid rgba(255,255,255,0.06);
+  white-space:nowrap; pointer-events:none;
+}
+
+/* ── WHY SECTION ── */
+.why-section { margin-top:20px; }
+.why-section h2 {
+  font-size:clamp(24px,3vw,36px); font-weight:800;
+  color:#fff; letter-spacing:-1px; margin-bottom:8px;
+}
+.why-section h2 span { color:var(--gold); }
+.why-section .subtitle { font-size:15px; color:var(--muted); margin-bottom:40px; }
+
+.why-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+@media(max-width:700px) { .why-grid { grid-template-columns:1fr; } }
+
+.why-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:16px; padding:28px 24px;
+  position:relative; overflow:hidden;
+  transition:border-color 0.3s, box-shadow 0.3s;
+}
+.why-card:hover {
+  border-color:rgba(255,215,0,0.25);
+  box-shadow:0 0 30px rgba(255,215,0,0.06);
+}
+.why-card::after {
+  content:''; position:absolute; bottom:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg,transparent,var(--wc),transparent);
+  opacity:0.4;
+}
+.why-card .wc-icon { font-size:28px; margin-bottom:14px; }
+.why-card h3 { font-size:14px; font-weight:700; color:#fff; margin-bottom:8px; }
+.why-card p { font-size:12px; color:var(--muted); line-height:1.75; }
+.why-card .wc-tag {
+  display:inline-block; margin-top:14px;
+  font-family:var(--mono); font-size:9px; font-weight:700;
+  letter-spacing:1.5px; text-transform:uppercase;
+  padding:3px 10px; border-radius:20px;
+  background:rgba(255,215,0,0.07); color:var(--gold);
+  border:1px solid rgba(255,215,0,0.2);
+}
+
+/* ── ANIMATIONS ── */
+@keyframes pulse {
+  0%,100%{opacity:1} 50%{opacity:0.4}
+}
+@keyframes flow {
+  0%{stroke-dashoffset:20} 100%{stroke-dashoffset:0}
+}
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<div class="page">
+
+  <header>
+    <div class="eyebrow">OXY ALGO · Infrastructure</div>
+    <h1>The <span>Machine</span> Fleet</h1>
+    <p>Five computers. One system. Built like a bank, priced like a startup.</p>
+  </header>
+
+  <!-- DIAGRAM -->
+  <div id="diagram-wrap">
+    <svg id="diagram" viewBox="0 0 1100 580" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <!-- Glows -->
+        <filter id="glow-gold"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <filter id="glow-cyan"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <filter id="glow-green"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+
+        <!-- Animated dash patterns -->
+        <marker id="arr-gold" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="rgba(255,215,0,0.6)"/>
+        </marker>
+        <marker id="arr-cyan" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="rgba(0,229,255,0.6)"/>
+        </marker>
+        <marker id="arr-purple" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="rgba(153,69,255,0.6)"/>
+        </marker>
+        <marker id="arr-green" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="rgba(0,255,136,0.5)"/>
+        </marker>
+
+        <linearGradient id="lineGold" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="rgba(255,215,0,0.6)"/>
+          <stop offset="100%" stop-color="rgba(255,215,0,0.1)"/>
+        </linearGradient>
+      </defs>
+
+      <!-- ── TAILSCALE RING (background) ── -->
+      <ellipse cx="550" cy="290" rx="340" ry="200"
+        fill="none" stroke="rgba(153,69,255,0.08)" stroke-width="1"
+        stroke-dasharray="6,4"/>
+      <text x="550" y="106" text-anchor="middle"
+        font-family="'JetBrains Mono',monospace" font-size="10"
+        fill="rgba(153,69,255,0.4)" letter-spacing="3">TAILSCALE VPN MESH</text>
+
+      <!-- ── INTERNET RING (outer) ── -->
+      <ellipse cx="550" cy="290" rx="490" ry="265"
+        fill="none" stroke="rgba(255,215,0,0.04)" stroke-width="1"
+        stroke-dasharray="4,8"/>
+
+      <!-- ── CONNECTIONS ── -->
+
+      <!-- Ra → Horus (SSH + control) -->
+      <line x1="310" y1="200" x2="550" y2="120"
+        stroke="rgba(255,215,0,0.35)" stroke-width="1.5"
+        stroke-dasharray="6,4" marker-end="url(#arr-gold)">
+        <animate attributeName="stroke-dashoffset" from="20" to="0" dur="1.5s" repeatCount="indefinite"/>
+      </line>
+
+      <!-- Ra → Thoth (SSH + control) -->
+      <line x1="310" y1="200" x2="550" y2="370"
+        stroke="rgba(255,215,0,0.3)" stroke-width="1.5"
+        stroke-dasharray="6,4" marker-end="url(#arr-gold)">
+        <animate attributeName="stroke-dashoffset" from="20" to="0" dur="2s" repeatCount="indefinite"/>
+      </line>
+
+      <!-- Horus → Thoth (Ollama tunnel) -->
+      <line x1="550" y1="150" x2="550" y2="340"
+        stroke="rgba(0,229,255,0.4)" stroke-width="1.5"
+        stroke-dasharray="5,4" marker-end="url(#arr-cyan)">
+        <animate attributeName="stroke-dashoffset" from="18" to="0" dur="1.2s" repeatCount="indefinite"/>
+      </line>
+
+      <!-- Horus → Discord (external) -->
+      <path d="M 720 120 C 820 80, 940 100, 980 180"
+        fill="none" stroke="rgba(255,215,0,0.25)" stroke-width="1.5"
+        stroke-dasharray="5,5" marker-end="url(#arr-gold)">
+        <animate attributeName="stroke-dashoffset" from="20" to="0" dur="2s" repeatCount="indefinite"/>
+      </path>
+
+      <!-- Osiris ↔ Ra (Tailscale) -->
+      <line x1="310" y1="200" x2="160" y2="380"
+        stroke="rgba(153,69,255,0.4)" stroke-width="1.5"
+        stroke-dasharray="4,4" marker-end="url(#arr-purple)">
+        <animate attributeName="stroke-dashoffset" from="16" to="0" dur="2.5s" repeatCount="indefinite"/>
+      </line>
+
+      <!-- Amun ↔ Ra (Tailscale) -->
+      <line x1="310" y1="200" x2="160" y2="150"
+        stroke="rgba(153,69,255,0.35)" stroke-width="1.5"
+        stroke-dasharray="4,4" marker-end="url(#arr-purple)">
+        <animate attributeName="stroke-dashoffset" from="16" to="0" dur="3s" repeatCount="indefinite"/>
+      </line>
+
+      <!-- n8n → Horus PostgreSQL -->
+      <path d="M 680 240 C 700 200, 680 160, 650 140"
+        fill="none" stroke="rgba(0,255,136,0.35)" stroke-width="1.5"
+        stroke-dasharray="5,4" marker-end="url(#arr-green)">
+        <animate attributeName="stroke-dashoffset" from="18" to="0" dur="1.5s" repeatCount="indefinite"/>
+      </path>
+
+      <!-- Connection labels -->
+      <text x="390" y="140" font-family="'JetBrains Mono',monospace" font-size="9" fill="rgba(255,215,0,0.5)" text-anchor="middle" transform="rotate(-25,390,140)">SSH control</text>
+      <text x="390" y="310" font-family="'JetBrains Mono',monospace" font-size="9" fill="rgba(255,215,0,0.5)" text-anchor="middle" transform="rotate(25,390,310)">SSH control</text>
+      <text x="570" y="250" font-family="'JetBrains Mono',monospace" font-size="9" fill="rgba(0,229,255,0.6)" text-anchor="middle">Ollama tunnel</text>
+      <text x="840" y="108" font-family="'JetBrains Mono',monospace" font-size="9" fill="rgba(255,215,0,0.5)" text-anchor="middle">Discord API</text>
+      <text x="195" y="280" font-family="'JetBrains Mono',monospace" font-size="9" fill="rgba(153,69,255,0.6)" text-anchor="middle" transform="rotate(-45,195,280)">Tailscale</text>
+      <text x="200" y="155" font-family="'JetBrains Mono',monospace" font-size="9" fill="rgba(153,69,255,0.6)" text-anchor="middle" transform="rotate(-10,200,155)">Tailscale</text>
+    </svg>
+
+    <!-- ── HTML NODES (positioned absolutely over SVG) ── -->
+
+    <!-- HORUS — top center -->
+    <div class="node" id="n-horus"
+      style="left:50%;top:21%;--node-color:#FFD700;--node-glow:rgba(255,215,0,0.2);"
+      data-name="Horus" data-desc="Trading VPS"
+      data-services="Discord Bot (PM2)|PostgreSQL (Docker)|n8n Automation|Ollama AI (Docker)|PG Bridge REST API|Health check :3100"
+      data-ip="187.77.19.93">
+      <div class="node-card">
+        <div class="node-icon">🐂</div>
+        <div class="node-name">Horus</div>
+        <div class="node-role">Trading VPS</div>
+        <div class="node-ip">187.77.19.93</div>
+        <div class="node-status">
+          <div class="status-dot"></div>
+          <div class="status-text">LIVE</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RA — center left -->
+    <div class="node" id="n-ra"
+      style="left:28%;top:34%;--node-color:#00E5FF;--node-glow:rgba(0,229,255,0.2);"
+      data-name="Ra" data-desc="Dev / Claude Code VPS"
+      data-services="Claude Code CLI|SSH access to all machines|Memory persistence|GitHub auto-push|Presentation builder"
+      data-ip="100.81.181.5">
+      <div class="node-card">
+        <div class="node-icon">☀️</div>
+        <div class="node-name">Ra</div>
+        <div class="node-role">Dev / AI Brain</div>
+        <div class="node-ip">100.81.181.5</div>
+        <div class="node-status">
+          <div class="status-dot" style="background:var(--cyan);box-shadow:0 0 6px var(--cyan);"></div>
+          <div class="status-text">LIVE</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- THOTH — center right/bottom -->
+    <div class="node" id="n-thoth"
+      style="left:50%;top:65%;--node-color:#9945FF;--node-glow:rgba(153,69,255,0.2);"
+      data-name="Thoth" data-desc="AI Agent VPS"
+      data-services="OpenClaw AI Agent|Telegram @oxyalgobot|Discord AI (allowlisted)|Web UI :18789|Ollama tunnel → Horus"
+      data-ip="169.239.180.110">
+      <div class="node-card">
+        <div class="node-icon">🦅</div>
+        <div class="node-name">Thoth</div>
+        <div class="node-role">AI Agent VPS</div>
+        <div class="node-ip">169.239.180.110</div>
+        <div class="node-status">
+          <div class="status-dot" style="background:var(--purple);box-shadow:0 0 6px var(--purple);"></div>
+          <div class="status-text">LIVE</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OSIRIS — far left bottom -->
+    <div class="node" id="n-osiris"
+      style="left:14%;top:65%;--node-color:#00FF88;--node-glow:rgba(0,255,136,0.15);"
+      data-name="Osiris" data-desc="Home Server"
+      data-services="Local storage / backup|Tailscale mesh node|Future: local LLM hosting|Dev overflow compute"
+      data-ip="100.91.247.40">
+      <div class="node-card">
+        <div class="ts-badge">TAILSCALE</div>
+        <div class="node-icon">🏛️</div>
+        <div class="node-name">Osiris</div>
+        <div class="node-role">Home Server</div>
+        <div class="node-ip">100.91.247.40</div>
+        <div class="node-status">
+          <div class="status-dot" style="background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 3s infinite;"></div>
+          <div class="status-text">STANDBY</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AMUN — far left top -->
+    <div class="node" id="n-amun"
+      style="left:14%;top:26%;--node-color:#FF8C00;--node-glow:rgba(255,140,0,0.15);"
+      data-name="Amun" data-desc="Laptop"
+      data-services="Your daily driver|Claude Code sessions|Local development|Tailscale access to all machines|Direct fleet control"
+      data-ip="100.86.254.128">
+      <div class="node-card">
+        <div class="ts-badge">TAILSCALE</div>
+        <div class="node-icon">💻</div>
+        <div class="node-name">Amun</div>
+        <div class="node-role">Laptop · Owner</div>
+        <div class="node-ip">100.86.254.128</div>
+        <div class="node-status">
+          <div class="status-dot" style="background:#FF8C00;box-shadow:0 0 6px #FF8C00;"></div>
+          <div class="status-text">YOU</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DISCORD (external service indicator) -->
+    <div class="node" id="n-discord"
+      style="left:87%;top:32%;--node-color:#5865F2;--node-glow:rgba(88,101,242,0.2);"
+      data-name="Discord" data-desc="External Platform"
+      data-services="3 active servers|1,100+ total members|13 dashboards per server|36 slash commands|WebSocket connection"
+      data-ip="discord.com">
+      <div class="node-card" style="min-width:120px;">
+        <div class="node-icon">🎮</div>
+        <div class="node-name">Discord</div>
+        <div class="node-role">3 Servers</div>
+        <div class="node-ip">External API</div>
+        <div class="node-status">
+          <div class="status-dot" style="background:#5865F2;box-shadow:0 0 6px #5865F2;"></div>
+          <div class="status-text">CONNECTED</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end diagram-wrap -->
+
+  <!-- WHY SECTION -->
+  <div class="why-section">
+    <h2>Why this stack <span>matters.</span></h2>
+    <p class="subtitle">Every machine has one job. No single point of failure. Built to scale.</p>
+
+    <div class="why-grid">
+
+      <div class="why-card" style="--wc:#FFD700;">
+        <div class="wc-icon">⚡</div>
+        <h3>Separation of Concerns</h3>
+        <p>Horus handles all live trading operations. Thoth handles the AI agent. Ra handles development. If one machine goes down, the others keep running. Your signals still post. Your members still get served.</p>
+        <span class="wc-tag">Fault Isolation</span>
+      </div>
+
+      <div class="why-card" style="--wc:#9945FF;">
+        <div class="wc-icon">🔒</div>
+        <h3>Tailscale Private Network</h3>
+        <p>Osiris and Amun connect through Tailscale — a zero-config private VPN. You can SSH into any machine from your laptop anywhere in the world, on any network, without opening public ports. It's like having a private LAN across the planet.</p>
+        <span class="wc-tag">Zero Trust Network</span>
+      </div>
+
+      <div class="why-card" style="--wc:#00E5FF;">
+        <div class="wc-icon">☀️</div>
+        <h3>Ra as the Command Center</h3>
+        <p>Ra runs Claude Code — an AI that has full SSH access to every machine in the fleet. It remembers your stack across sessions, pushes code to GitHub automatically, and can deploy changes to any machine in seconds. It's the brain that controls the whole operation.</p>
+        <span class="wc-tag">AI Ops Center</span>
+      </div>
+
+      <div class="why-card" style="--wc:#00FF88;">
+        <div class="wc-icon">💰</div>
+        <h3>Infrastructure Cost vs Value</h3>
+        <p>Three cloud VPS machines, one home server, one laptop. Total monthly infrastructure cost: under $100. Revenue potential: $1.2M+/year. The stack is lean by design — no over-engineering, no bloated cloud bills. Just purpose-built machines doing exactly what they need to.</p>
+        <span class="wc-tag">99% Margin</span>
+      </div>
+
+      <div class="why-card" style="--wc:#FF8C00;">
+        <div class="wc-icon">🌍</div>
+        <h3>Scales Without Changing Anything</h3>
+        <p>Adding a new white label Discord server? Zero code changes. Adding a new signal strategy? One n8n workflow. Adding a new AI model? One config line. The architecture was built so the hardest work is already done — growth is just configuration.</p>
+        <span class="wc-tag">Horizontal Scale</span>
+      </div>
+
+      <div class="why-card" style="--wc:#FF4455;">
+        <div class="wc-icon">🧠</div>
+        <h3>AI at Every Layer</h3>
+        <p>Claude on Ra thinks and deploys. Claude on Horus analyzes signals. OpenClaw on Thoth talks to members 24/7. Ollama runs locally as a free fallback so you never pay for simple tasks. This isn't a signal group with a chatbot — it's a full AI-native operation.</p>
+        <span class="wc-tag">AI Native</span>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- end page -->
+
+<!-- TOOLTIP -->
+<div id="tooltip">
+  <h3 id="tt-title"></h3>
+  <ul id="tt-list"></ul>
+</div>
+
+<script>
+// ── CANVAS BG ──────────────────────────────────
+const canvas = document.getElementById('bg');
+const ctx = canvas.getContext('2d');
+function resize(){ canvas.width=innerWidth; canvas.height=innerHeight; }
+resize(); window.addEventListener('resize',resize);
+const pts = Array.from({length:60},()=>({
+  x:Math.random()*innerWidth,y:Math.random()*innerHeight,
+  vx:(Math.random()-.5)*.2,vy:(Math.random()-.5)*.2,
+  r:Math.random()*1.2+.3,a:Math.random()*.3+.1
+}));
+function drawBg(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle='rgba(255,215,0,0.03)'; ctx.lineWidth=1;
+  const g=60;
+  for(let x=0;x<canvas.width;x+=g){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,canvas.height);ctx.stroke();}
+  for(let y=0;y<canvas.height;y+=g){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(canvas.width,y);ctx.stroke();}
+  pts.forEach(p=>{
+    p.x+=p.vx;p.y+=p.vy;
+    if(p.x<0)p.x=canvas.width;if(p.x>canvas.width)p.x=0;
+    if(p.y<0)p.y=canvas.height;if(p.y>canvas.height)p.y=0;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,215,0,${p.a})`;ctx.fill();
+  });
+  requestAnimationFrame(drawBg);
+}
+drawBg();
+
+// ── TOOLTIPS ──────────────────────────────────
+const tt = document.getElementById('tooltip');
+const ttTitle = document.getElementById('tt-title');
+const ttList = document.getElementById('tt-list');
+
+document.querySelectorAll('.node').forEach(node=>{
+  node.addEventListener('mouseenter', e=>{
+    const name = node.dataset.name;
+    const ip = node.dataset.ip;
+    const services = node.dataset.services.split('|');
+    ttTitle.textContent = `${name} — ${node.dataset.desc}`;
+    ttList.innerHTML = services.map(s=>`<li>${s}</li>`).join('');
+    tt.style.opacity='1';
+    posTooltip(e);
+  });
+  node.addEventListener('mousemove', posTooltip);
+  node.addEventListener('mouseleave',()=>{ tt.style.opacity='0'; });
+});
+
+function posTooltip(e){
+  let x=e.clientX+18, y=e.clientY-10;
+  if(x+320>innerWidth) x=e.clientX-330;
+  if(y+200>innerHeight) y=e.clientY-210;
+  tt.style.left=x+'px';tt.style.top=y+'px';
+}
+</script>
+</body>
+</html>
